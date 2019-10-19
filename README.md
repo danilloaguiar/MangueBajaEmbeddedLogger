@@ -1,2 +1,0 @@
-# MangueBajaEmbeddedLogger
-# MangueBajaEmbeddedLogger
