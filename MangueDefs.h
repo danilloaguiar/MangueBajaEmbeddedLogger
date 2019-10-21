@@ -1,10 +1,7 @@
 #define CAN_IER         (*((volatile unsigned long *)0x40006414))
 
-#define BUFFER_SIZE     50
-#define THROTTLE_MID    0x00
-#define THROTTLE_RUN    0x01
-#define THROTTLE_CHOKE  0x02
 
+//CAN ID
 #define SYNC_ID         0x001       // message for bus sync
 #define FLAGS_ID        0x101       // 1by
 #define IMU_ACC_ID      0x200       // 8by = accelerometer data (3D) + timestamp
@@ -14,8 +11,13 @@
 #define TEMPERATURE_ID  0x400       // 4by = engine temp. + cvt temp. + timestamp
 #define FUEL_ID         0x500       // 3by = fuel level + timestamp
 
+//Logger Definitiions
+#define SERIAL_BAUD 1000000                     // Board baud rate
+#define BUFFER_SIZE 200                         // Acquisition buffer
+#define SAVE_WHEN 50                            // Number of packets to save (fail safe)
+#define SAMPLE_FREQ 200                         // Frequency in Hz
 
-
+//Data Structs 
 typedef struct
 {
     int16_t acc_x;
@@ -28,21 +30,18 @@ typedef struct
     
 typedef struct
 {  
-    imu_t imu[4];
+    imu_t imu;
     uint16_t rpm;
     uint16_t speed;
-    uint8_t temperature;
+    uint8_t temp;
     uint8_t flags;      // MSB - BOX | BUFFER FULL | NC | NC | FUEL_LEVEL | SERVO_ERROR | CHK | RUN - LSB
     uint32_t timestamp;
 } packet_t;
 
 typedef enum
 {
-    IDLE_ST,        // wait
-    TEMP_ST,        // measure temperatures
-    FUEL_ST,        // proccess fuel data sampling
-    RPM_ST,         // calculate speed
-    THROTTLE_ST,    // write throttle position (PWM)
-    RADIO_ST,       // send data for box via radio (SPI)
-    DEBUG_ST        // send data for debug
+    OPEN,       // open archive
+    SAVE,       // save data
+    CLOSE,      // close archive
+    CAN         // 
 } state_t;

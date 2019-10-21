@@ -1,8 +1,14 @@
 #include "mbed.h"
-
+#include "MangueDefs.h"
 
 SDFileSystem sd(PB_15, PB_14, PB_13, PB_12, "sd"); // MOSI, MISO, SCK, CS
+DigitalOut led(PC_13);
 
+
+packet_t data;
+state_t state = OPEN;
+
+int count = 0;
 
 
 void setupInterrupts(){
@@ -12,8 +18,8 @@ void setupInterrupts(){
 
 
 void canISR(){
-  CAN_IER &= ~CAN_IER_FMPIE0;                 // disable RX interrupt
-  queue.call(&canHandler);                    // add canHandler() to events queue
+    CAN_IER &= ~CAN_IER_FMPIE0;                 // disable RX interrupt
+    state = CAN;
 }
 
 
@@ -31,42 +37,26 @@ void filterMessage(CANMsg msg){
 
   if(msg.id == RPM_ID)
   {
-      msg >> rpm_hz;
+      msg >> data.rpm;
   }
   
   else if(msg.id == TEMPERATURE_ID)
   {
-      msg >> temp_motor;
+      msg >> data.temp;
   }
   
   else if (msg.id == FLAGS_ID)
   {
-      msg >> flags;
-  }
-  else if (msg.id == THROTTLE_ID)
-  {
-      switch_clicked = true;
-      state_buffer.push( );
-      msg >> switch_state;
+      msg >> data.flags;
   }
   else if (msg.id == IMU_ACC_ID)
   {
-      imu_last_acq = t.read_ms();
-      msg >> data.imu[imu_counter].acc_x >> data.imu[imu_counter].acc_y >> data.imu[imu_counter].acc_z;
+      msg >> data.imu.acc_x >> data.imu.acc_y >> data.imu.acc_z;
   }
 
   else if (msg.id == IMU_DPS_ID)
   {
-      msg >> data.imu[imu_counter].dps_x >> data.imu[imu_counter].dps_y >> data.imu[imu_counter].dps_z;
-      if (imu_counter < 3)
-      {
-          imu_counter++;
-      }
-      else if (imu_counter == 3)
-      {
-          imu_buffer.push(data.imu);
-          imu_counter = 0;
-      }
+      msg >> data.imu.dps_x >> data.imu.dps_y >> data.imu.dps_z;
   }
   else if (msg.id == SPEED_ID)
   {
@@ -75,34 +65,60 @@ void filterMessage(CANMsg msg){
 }
 
 
-
 int main() {
 
-
-    CANMsg txMsg;
-    eventThread.start(callback(&queue, &EventQueue::dispatch_forever));
-    setupInterrupts();
-
+    static FILE *fp;
 
     //Initialize SD
     while(sd.disk_status()){
-        lcd.printf("sd.disk_status");
+        printf("sd.disk_status");
         sd.disk_initialize();
-        myled = 0;
-        wait(0.5);
-        myled = 1;
+        led = 0;
+        wait(0.2);
+        led = 1;
         wait(0.2);
     }          
 
 
+
+    CANMsg txMsg;
+    setupInterrupts();
+    CAN_IER &= ~CAN_IER_FMPIE0;                 // disable RX interrupt
+    led = 0;
+
+
   while(1) {
-  switch (current_state)
-        {
-            case IDLE_ST:
-                break;
-            default:
-                break;
+    switch (state)
+            {
+                case OPEN:
+                    fp = fopen("/sd/DADOS.txt", "a");
+                    if (fp == NULL) {  // if it can't open the file then print error message
+                        led = 1;
+                        printf("fp = null");
+                    }
+                    CAN_IER |= CAN_IER_FMPIE0;                  // enable RX interrupt
+                    break;
+                case SAVE:
+                    //fprintf(fp, "%d %i \n", );
+                    //fwrite((void *)&data, sizeof(packet_t), 1, fp);
+                    count++;
+                    printf("%" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu8 ", %" PRIu8 "/n", data.imu.acc_x, data.imu.acc_y, data.imu.acc_z, data.imu.dps_x, data.imu.dps_y, data.imu.dps_z, data.rpm, data.speed, data.flags);                
+                    if(count>200){
+                        state = CLOSE;
+                    }
+                    break;
+                case CLOSE:
+                    fclose(fp);
+                    CAN_IER &= ~CAN_IER_FMPIE0;                 // disable RX interrupt
+                    state = OPEN;
+                    break;
+                case CAN:
+                    canHandler();
+                    state = SAVE;
+                    break;
+                default:
+                    break;
+            }
         }
     }
-  }
 }
